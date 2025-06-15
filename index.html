@@ -188,10 +188,21 @@
                 </div>
             `;
 
-            const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+            // Use window properties directly for __app_id and __firebase_config
+            // This provides fallbacks for deployments outside of the Canvas environment
+            const currentAppId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'parental-productivity-default';
+            const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {
+                // IMPORTANT: Replace with your actual Firebase project configuration for production deployments
+                // You can find this in your Firebase project settings -> Project settings -> General -> Your apps -> Firebase SDK snippet -> Config
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_AUTH_DOMAIN",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_STORAGE_BUCKET",
+                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
 
-            if (firebaseConfig) {
+            if (firebaseConfig && firebaseConfig.projectId !== "YOUR_PROJECT_ID") { // Check if default placeholder is still there
                 try {
                     window.firebaseApp = initializeApp(firebaseConfig);
                     window.db = getFirestore(window.firebaseApp);
@@ -223,8 +234,8 @@
                             });
                         } else {
                             try {
-                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                                    await signInWithCustomToken(window.auth, __initial_auth_token);
+                                if (typeof window.__initial_auth_token !== 'undefined' && window.__initial_auth_token) {
+                                    await signInWithCustomToken(window.auth, window.__initial_auth_token);
                                 } else {
                                     await signInAnonymously(window.auth);
                                 }
@@ -243,8 +254,8 @@
                     renderApp();
                 }
             } else {
-                console.error("Firebase config not available in the environment.");
-                showModal("Configuration Error", "Firebase configuration is missing. Cannot load app.");
+                console.error("Firebase config not available or placeholder in the environment.");
+                showModal("Configuration Error", "Firebase configuration is missing or placeholder values are still present. Please replace 'YOUR_API_KEY', 'YOUR_AUTH_DOMAIN', 'YOUR_PROJECT_ID', etc., with your actual Firebase project credentials for external deployment.");
                 window.isDataLoaded = true;
                 renderApp();
             }
@@ -1354,3 +1365,4 @@
     </div>
 </body>
 </html>
+
