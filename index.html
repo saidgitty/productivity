@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parental Productivity Partner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start; /* Align to top to prevent vertical centering on short content */
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 960px; /* Increased max-width for better dashboard layout */
+            width: 100%;
+            margin: 2rem auto;
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            padding: 1.5rem;
+        }
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            font-size: 1.125rem; /* text-lg */
+            font-weight: 500; /* font-medium */
+            border-top-left-radius: 0.5rem;
+            border-top-right-radius: 0.5rem;
+            transition-property: background-color, color, border-color;
+            transition-duration: 200ms;
+            transition-timing-function: ease-in-out;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+        }
+        .tab-button.active {
+            color: #1d4ed8; /* text-blue-700 */
+            border-bottom-color: #1d4ed8;
+        }
+        .tab-button:not(.active):hover {
+            color: #3b82f6; /* hover:text-blue-500 */
+        }
+        .form-checkbox {
+            appearance: none;
+            display: inline-block;
+            width: 1.25rem; /* h-5 */
+            height: 1.25rem; /* w-5 */
+            border: 1px solid #d1d5db; /* border-gray-300 */
+            border-radius: 0.25rem; /* rounded */
+            cursor: pointer;
+            vertical-align: middle;
+            position: relative;
+        }
+        .form-checkbox:checked {
+            background-color: #2563eb; /* bg-blue-600 */
+            border-color: #2563eb;
+        }
+        .form-checkbox:checked::before {
+            content: '✔';
+            display: block;
+            color: white;
+            font-size: 0.75rem;
+            line-height: 1.25rem;
+            text-align: center;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        .form-checkbox:focus {
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5); /* focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 */
+        }
+         .form-checkbox.green:checked {
+            background-color: #10B981; /* bg-green-500 */
+            border-color: #10B981;
+        }
+        .form-checkbox.green:focus {
+            box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.5); /* focus:ring-green-500 */
+        }
+         .form-checkbox.purple:checked {
+            background-color: #8B5CF6; /* bg-purple-600 */
+            border-color: #8B5CF6;
+        }
+        .form-checkbox.purple:focus {
+            box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.5); /* focus:ring-purple-500 */
+        }
+        /* Style for chat messages */
+        .chat-message {
+            max-width: 70%;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+        }
+        .chat-message.user {
+            background-color: #2563eb; /* bg-blue-600 */
+            color: white;
+            margin-left: auto;
+        }
+        .chat-message.ai {
+            background-color: #e5e7eb; /* bg-gray-200 */
+            color: #374151; /* text-gray-800 */
+            margin-right: auto;
+        }
+    </style>
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Global variables for Firebase and app data
+        window.firebaseApp = null;
+        window.db = null;
+        window.auth = null;
+        window.userId = null;
+        window.appId = null;
+        window.userData = null;
+        window.isAuthReady = false;
+        window.isDataLoaded = false;
+
+        // Function to update user data (used by components)
+        window.updateUserDataInFirestore = async (newData) => {
+            if (!window.db || !window.userId) {
+                console.error("Firestore not initialized or user not authenticated.");
+                showModal("Error", "App not ready. Please try again.");
+                return;
+            }
+            const userDocRef = doc(window.db, `artifacts/${window.appId}/users/${window.userId}/parentalProductivityData/userProfile`);
+            try {
+                await setDoc(userDocRef, newData, { merge: true });
+                window.userData = newData; // Update global state
+                console.log("Firestore updated successfully.");
+            } catch (e) {
+                console.error("Error updating user data:", e);
+                showModal("Error", `Failed to save changes: ${e.message}`);
+            }
+        };
+
+        // Modal functions
+        window.showModal = (title, message, onConfirm = null, onCancel = null, confirmText = 'OK', cancelText = 'Cancel') => {
+            const modal = document.getElementById('app-modal');
+            modal.querySelector('#modal-title').textContent = title;
+            modal.querySelector('#modal-message').textContent = message;
+
+            const confirmBtn = modal.querySelector('#modal-confirm-btn');
+            const cancelBtn = modal.querySelector('#modal-cancel-btn');
+
+            confirmBtn.textContent = confirmText;
+            if (onConfirm) {
+                confirmBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    onConfirm();
+                };
+                confirmBtn.classList.remove('hidden');
+            } else {
+                confirmBtn.onclick = () => modal.classList.add('hidden');
+                confirmBtn.classList.remove('hidden'); // Always show OK for basic message
+            }
+
+            if (onCancel) {
+                cancelBtn.textContent = cancelText;
+                cancelBtn.onclick = () => {
+                    modal.classList.add('hidden');
+                    onCancel();
+                };
+                cancelBtn.classList.remove('hidden');
+            } else {
+                cancelBtn.classList.add('hidden');
+            }
+            modal.classList.remove('hidden');
+        };
+
+        // Initialize Firebase
+        window.addEventListener('load', async () => {
+            document.getElementById('app-root').innerHTML = `
+                <div class="flex items-center justify-center min-h-[60vh]">
+                    <div class="text-center p-6 bg-white rounded-lg shadow-md">
+                        <p class="text-xl text-blue-700 font-semibold">Loading Parental Productivity Partner...</p>
+                        <p class="text-gray-500 mt-2">Authenticating and fetching your data.</p>
+                        <div class="mt-4 animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                        <p id="loading-user-id" class="mt-4 text-xs text-gray-400 hidden"></p>
+                    </div>
+                </div>
+            `;
+
+            const currentAppId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+            const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+            if (firebaseConfig) {
+                try {
+                    window.firebaseApp = initializeApp(firebaseConfig);
+                    window.db = getFirestore(window.firebaseApp);
+                    window.auth = getAuth(window.firebaseApp);
+                    window.appId = currentAppId;
+
+                    onAuthStateChanged(window.auth, async (user) => {
+                        if (user) {
+                            window.userId = user.uid;
+                            document.getElementById('loading-user-id').textContent = `User ID: ${window.userId}`;
+                            document.getElementById('loading-user-id').classList.remove('hidden');
+                            window.isAuthReady = true;
+                            // Fetch user data
+                            const userDocRef = doc(window.db, `artifacts/${window.appId}/users/${window.userId}/parentalProductivityData/userProfile`);
+                            onSnapshot(userDocRef, (docSnap) => {
+                                if (docSnap.exists()) {
+                                    window.userData = docSnap.data();
+                                    console.log("User data loaded:", window.userData);
+                                } else {
+                                    console.log("No user profile data found, starting onboarding.");
+                                    window.userData = null;
+                                }
+                                window.isDataLoaded = true;
+                                renderApp(); // Render the app once data is loaded
+                            }, (error) => {
+                                console.error("Error fetching user data with onSnapshot:", error);
+                                window.isDataLoaded = true;
+                                renderApp(); // Still attempt to render
+                            });
+                        } else {
+                            try {
+                                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                                    await signInWithCustomToken(window.auth, __initial_auth_token);
+                                } else {
+                                    await signInAnonymously(window.auth);
+                                }
+                            } catch (error) {
+                                console.error("Firebase authentication error:", error);
+                                showModal("Authentication Error", "Could not sign in. Please refresh.");
+                                window.isDataLoaded = true; // Mark as loaded even if error, to show appropriate screen
+                                renderApp();
+                            }
+                        }
+                    });
+                } catch (error) {
+                    console.error("Failed to initialize Firebase:", error);
+                    showModal("Firebase Error", `Failed to initialize Firebase: ${error.message}`);
+                    window.isDataLoaded = true;
+                    renderApp();
+                }
+            } else {
+                console.error("Firebase config not available in the environment.");
+                showModal("Configuration Error", "Firebase configuration is missing. Cannot load app.");
+                window.isDataLoaded = true;
+                renderApp();
+            }
+        });
+
+        // Main rendering function based on app state
+        function renderApp() {
+            const appRoot = document.getElementById('app-root');
+            if (window.isAuthReady && window.isDataLoaded) {
+                if (window.userData) {
+                    appRoot.innerHTML = Dashboard();
+                    initDashboardListeners();
+                } else {
+                    appRoot.innerHTML = Onboarding();
+                    initOnboardingListeners();
+                }
+            } else {
+                // Keep loading screen or show error
+                if (!window.isAuthReady || !window.isDataLoaded) {
+                     document.getElementById('app-root').innerHTML = `
+                        <div class="flex items-center justify-center min-h-[60vh]">
+                            <div class="text-center p-6 bg-white rounded-lg shadow-md">
+                                <p class="text-xl text-blue-700 font-semibold">Loading Parental Productivity Partner...</p>
+                                <p class="text-gray-500 mt-2">Authenticating and fetching your data.</p>
+                                <div class="mt-4 animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+                                <p id="loading-user-id" class="mt-4 text-xs text-gray-400 ${window.userId ? '' : 'hidden'}">User ID: ${window.userId || ''}</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // --- Onboarding Component (HTML String) ---
+        function Onboarding() {
+            return `
+                <div class="container">
+                    <h1 class="text-3xl font-bold text-center text-blue-700 mb-6">Parental Productivity Partner</h1>
+                    <div id="onboarding-content" class="space-y-4">
+                        <!-- Content will be rendered by JS -->
+                    </div>
+                    <div id="app-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center p-4 z-50 hidden">
+                        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-auto">
+                            <h3 id="modal-title" class="text-xl font-semibold text-gray-900 mb-4"></h3>
+                            <p id="modal-message" class="text-gray-700 mb-6"></p>
+                            <div class="flex justify-end space-x-3">
+                                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition duration-150 ease-in-out hidden"></button>
+                                <button id="modal-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out"></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let onboardingStep = 0;
+        let profileData = {};
+        let majorGoalsInput = '';
+        let openActionItemsInput = '';
+        let dailyWeeklyHabitsInput = '';
+
+        function initOnboardingListeners() {
+            onboardingStep = 0; // Reset step on re-init
+            profileData = window.userData?.profile || {
+                name: '',
+                leaveStartDate: '',
+                leaveEndDate: '',
+                babyAgeMonths: 6,
+                babySchedule: {
+                    wakeUp: '',
+                    firstNap: '',
+                    secondNap: '',
+                    thirdNap: '',
+                    bedtimeStart: '',
+                    bedtimeAsleep: ''
+                },
+                breastfeedingStatus: 'Exclusive',
+                location: 'Culver City, Los Angeles',
+                residenceType: '2-bedroom apartment (no dedicated workout/workspace)',
+                partnerAvailability: 'Works until 1-2 PM daily',
+                nannyConsideration: '10-18 hours/week',
+            };
+            majorGoalsInput = window.userData?.majorGoals?.map(g => g.name).join('; ') || '';
+            openActionItemsInput = window.userData?.openActionItems?.map(a => a.name).join('; ') || '';
+            dailyWeeklyHabitsInput = window.userData?.dailyWeeklyHabits?.map(h => `${h.name} (${h.frequency})`).join('; ') || '';
+
+            if (window.userData) {
+                onboardingStep = 2; // If data exists, jump to review step
+            }
+
+            renderOnboardingStep();
+        }
+
+        function renderOnboardingStep() {
+            const contentDiv = document.getElementById('onboarding-content');
+            if (!contentDiv) return; // Guard in case element is not mounted yet
+
+            let html = '';
+            let buttonText = '';
+            let buttonAction = '';
+
+            switch (onboardingStep) {
+                case 0:
+                    html = `
+                        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Step 1: Your Profile</h2>
+                        <label class="block">
+                            <span class="text-gray-700">Your Name:</span>
+                            <input type="text" id="profile-name" value="${profileData.name}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" placeholder="e.g., Gabrielle" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Leave Start Date:</span>
+                            <input type="date" id="profile-leaveStartDate" value="${profileData.leaveStartDate}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Leave End Date (flexible: July 31 - Aug 21):</span>
+                            <input type="date" id="profile-leaveEndDate" value="${profileData.leaveEndDate}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Baby's Age (in months):</span>
+                            <input type="number" id="profile-babyAgeMonths" value="${profileData.babyAgeMonths}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <div class="space-y-2">
+                            <h3 class="text-lg font-medium text-gray-800 mt-4">Baby's Daily Schedule:</h3>
+                            ${Object.entries(profileData.babySchedule).map(([key, value]) => `
+                                <label class="block">
+                                    <span class="text-gray-700 capitalize">${key.replace(/([A-Z])/g, ' $1').trim()}:</span>
+                                    <input type="text" id="profile-babySchedule-${key}" value="${value}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" placeholder="e.g., ${key === 'wakeUp' ? '6:30 - 7:30 AM' : '1.5 hours'}" />
+                                </label>
+                            `).join('')}
+                        </div>
+                        <label class="block">
+                            <span class="text-gray-700">Breastfeeding Status:</span>
+                            <select id="profile-breastfeedingStatus" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2">
+                                <option value="Exclusive" ${profileData.breastfeedingStatus === 'Exclusive' ? 'selected' : ''}>Exclusive</option>
+                                <option value="Partial" ${profileData.breastfeedingStatus === 'Partial' ? 'selected' : ''}>Partial</option>
+                                <option value="Formula" ${profileData.breastfeedingStatus === 'Formula' ? 'selected' : ''}>Formula</option>
+                            </select>
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Location:</span>
+                            <input type="text" id="profile-location" value="${profileData.location}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Residence Type:</span>
+                            <input type="text" id="profile-residenceType" value="${profileData.residenceType}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Partner's Availability:</span>
+                            <input type="text" id="profile-partnerAvailability" value="${profileData.partnerAvailability}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Consideration of Nanny:</span>
+                            <input type="text" id="profile-nannyConsideration" value="${profileData.nannyConsideration}" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2" />
+                        </label>
+                    `;
+                    buttonText = 'Next: Input Goals';
+                    buttonAction = 'saveProfile';
+                    break;
+                case 1:
+                    html = `
+                        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Step 2: Define Your Goals</h2>
+                        <label class="block">
+                            <span class="text-gray-700">Major Goals (separate with semicolons, e.g., Read more; Pray; Feed solids):</span>
+                            <textarea id="majorGoalsInput" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2 h-32" placeholder="e.g., Read more (non-fiction); Pray five times a day; Feed freshly made solids to son 1-2 days a week; Learn about Montessori and do an activity daily;">${majorGoalsInput}</textarea>
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Open Action Items (separate with semicolons, e.g., Waxing; Social Calls):</span>
+                            <textarea id="openActionItemsInput" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2 h-32" placeholder="e.g., Get one waxing session; Meet in person with Shalija; Call Chaille;">${openActionItemsInput}</textarea>
+                        </label>
+                        <label class="block">
+                            <span class="text-gray-700">Daily & Weekly Habits (separate with semicolons, e.g., Eat 100g of protein (Daily); Wash Hair (Weekly)):</span>
+                            <textarea id="dailyWeeklyHabitsInput" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2 h-32" placeholder="e.g., Eat 100g of protein (Daily); Take AM Vitamins (Daily); Wash Hair (Weekly);">${dailyWeeklyHabitsInput}</textarea>
+                        </label>
+                    `;
+                    buttonText = 'Next: Review & Finalize';
+                    buttonAction = 'processGoalsAndHabits';
+                    break;
+                case 2:
+                    const { parsedMajorGoals, parsedOpenActionItems, parsedDailyWeeklyHabits } = parseGoalsAndHabits();
+                    html = `
+                        <h2 class="text-2xl font-semibold text-gray-900 mb-4">Step 3: Review Your Plan</h2>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm">
+                            <h3 class="text-xl font-medium text-gray-800 mb-2">Your Profile</h3>
+                            <p><strong>Name:</strong> ${profileData.name}</p>
+                            <p><strong>Baby Age:</strong> ${profileData.babyAgeMonths} months</p>
+                            <p><strong>Baby Schedule:</strong> ${profileData.babySchedule.wakeUp} Wake-up, ${profileData.babySchedule.firstNap} 1st Nap, etc.</p>
+                            <p><strong>Location:</strong> ${profileData.location}</p>
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm mt-4">
+                            <h3 class="text-xl font-medium text-gray-800 mb-2">Major Goals</h3>
+                            ${parsedMajorGoals.length === 0 ? '<p class="text-gray-600">No major goals entered.</p>' :
+                                `<ul class="list-disc list-inside text-gray-700">
+                                    ${parsedMajorGoals.map(goal => `<li>${goal.name}</li>`).join('')}
+                                </ul>`
+                            }
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm mt-4">
+                            <h3 class="text-xl font-medium text-gray-800 mb-2">Open Action Items</h3>
+                            ${parsedOpenActionItems.length === 0 ? '<p class="text-gray-600">No action items entered.</p>' :
+                                `<ul class="list-disc list-inside text-gray-700">
+                                    ${parsedOpenActionItems.map(item => `<li>${item.name}</li>`).join('')}
+                                </ul>`
+                            }
+                        </div>
+                        <div class="bg-gray-50 p-4 rounded-lg shadow-sm mt-4">
+                            <h3 class="text-xl font-medium text-gray-800 mb-2">Daily & Weekly Habits</h3>
+                            ${parsedDailyWeeklyHabits.length === 0 ? '<p class="text-gray-600">No habits entered.</p>' :
+                                `<ul class="list-disc list-inside text-gray-700">
+                                    ${parsedDailyWeeklyHabits.map(habit => `<li>${habit.name} (${habit.frequency})</li>`).join('')}
+                                </ul>`
+                            }
+                        </div>
+                        <div class="flex justify-between items-center mt-6">
+                            <button id="onboarding-back-btn" class="px-6 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors duration-200">Back</button>
+                            <button id="onboarding-next-btn" class="px-8 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors duration-200">Looks Good! Let's Go!</button>
+                        </div>
+                    `;
+                    buttonAction = 'finalizeSetup';
+                    break;
+            }
+
+            contentDiv.innerHTML = html;
+
+            // Attach event listeners after content is rendered
+            if (onboardingStep === 0) {
+                document.getElementById('profile-name').addEventListener('input', (e) => profileData.name = e.target.value);
+                document.getElementById('profile-leaveStartDate').addEventListener('input', (e) => profileData.leaveStartDate = e.target.value);
+                document.getElementById('profile-leaveEndDate').addEventListener('input', (e) => profileData.leaveEndDate = e.target.value);
+                document.getElementById('profile-babyAgeMonths').addEventListener('input', (e) => profileData.babyAgeMonths = parseInt(e.target.value) || 0);
+                document.getElementById('profile-breastfeedingStatus').addEventListener('change', (e) => profileData.breastfeedingStatus = e.target.value);
+                document.getElementById('profile-location').addEventListener('input', (e) => profileData.location = e.target.value);
+                document.getElementById('profile-residenceType').addEventListener('input', (e) => profileData.residenceType = e.target.value);
+                document.getElementById('profile-partnerAvailability').addEventListener('input', (e) => profileData.partnerAvailability = e.target.value);
+                document.getElementById('profile-nannyConsideration').addEventListener('input', (e) => profileData.nannyConsideration = e.target.value);
+                Object.keys(profileData.babySchedule).forEach(key => {
+                    document.getElementById(`profile-babySchedule-${key}`).addEventListener('input', (e) => profileData.babySchedule[key] = e.target.value);
+                });
+                const nextButton = document.createElement('button');
+                nextButton.className = "w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 mt-4";
+                nextButton.textContent = buttonText;
+                nextButton.onclick = handleOnboardingNext;
+                contentDiv.appendChild(nextButton);
+
+            } else if (onboardingStep === 1) {
+                document.getElementById('majorGoalsInput').addEventListener('input', (e) => majorGoalsInput = e.target.value);
+                document.getElementById('openActionItemsInput').addEventListener('input', (e) => openActionItemsInput = e.target.value);
+                document.getElementById('dailyWeeklyHabitsInput').addEventListener('input', (e) => dailyWeeklyHabitsInput = e.target.value);
+                const nextButton = document.createElement('button');
+                nextButton.className = "w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors duration-200 mt-4";
+                nextButton.textContent = buttonText;
+                nextButton.onclick = handleOnboardingNext;
+                contentDiv.appendChild(nextButton);
+            } else if (onboardingStep === 2) {
+                document.getElementById('onboarding-back-btn').addEventListener('click', handleOnboardingBack);
+                document.getElementById('onboarding-next-btn').addEventListener('click', handleOnboardingNext);
+            }
+        }
+
+        async function handleOnboardingNext() {
+            if (onboardingStep === 0) {
+                // Save Profile
+                await window.updateUserDataInFirestore({ profile: profileData });
+                onboardingStep++;
+                renderOnboardingStep();
+            } else if (onboardingStep === 1) {
+                // Process Goals and Habits
+                const { parsedMajorGoals, parsedOpenActionItems, parsedDailyWeeklyHabits } = parseGoalsAndHabits();
+                await window.updateUserDataInFirestore({
+                    majorGoals: parsedMajorGoals,
+                    openActionItems: parsedOpenActionItems,
+                    dailyWeeklyHabits: parsedDailyWeeklyHabits,
+                });
+                onboardingStep++;
+                renderOnboardingStep();
+            } else if (onboardingStep === 2) {
+                // Finalize Setup
+                const { parsedMajorGoals, parsedOpenActionItems, parsedDailyWeeklyHabits } = parseGoalsAndHabits();
+                const finalUserData = {
+                    profile: profileData,
+                    majorGoals: parsedMajorGoals,
+                    openActionItems: parsedOpenActionItems,
+                    dailyWeeklyHabits: parsedDailyWeeklyHabits,
+                    dailyRoutine: [
+                        { time: "07:00 AM", activity: "Baby Wake-up & Feeding", type: "baby" },
+                        { time: "08:30 AM", activity: "First Nap (Baby)", type: "baby" },
+                        { time: "08:45 AM", activity: "Personal Workout / Hydrate", type: "personal" },
+                        { time: "10:00 AM", activity: "Montessori Activity / Free Play", type: "baby_personal" },
+                        { time: "12:00 PM", activity: "Second Nap (Baby)", type: "baby" },
+                        { time: "12:30 PM", activity: "Meal Prep / Lunch (You)", type: "personal" },
+                        { time: "03:00 PM", activity: "Third Nap (Baby)", type: "baby" },
+                        { time: "03:30 PM", activity: "Read / Language Learning", type: "personal" },
+                        { time: "07:00 PM", activity: "Bedtime Routine (Baby)", type: "baby" },
+                        { time: "08:00 PM", activity: "Evening Wind Down / Partner Time", type: "personal" },
+                    ],
+                    resources: {
+                        bookRecommendations: [
+                            { title: "The Wonder Weeks", author: "Hetty van de Rijt & Frans Plooij", description: "Direct guide to mental leaps & developmental stages.", link: "#" },
+                            { title: "The Clear Qur'an", author: "Dr. Mustafa Khattab", description: "Accessible, modern English translation of the Holy Book.", link: "#" },
+                            { title: "Raising Securely Attached Kids", author: "Kent Hoffman, et al.", description: "Foundation for emotional & social development; interpreting infant cues.", link: "#" },
+                            { title: "Good Inside", author: "Becky Kennedy", description: "Understand child's inner world; foster connection, interpret cues.", link: "#" },
+                            { title: "The Whole-Brain Child", author: "Daniel J. Siegel & Tina Payne Bryson", description: "Understand brain development; foster integration & resilience.", link: "#" },
+                            { title: "Prisoners of Geography", author: "Tim Marshall", description: "Explores how physical geography fundamentally shapes geopolitical events.", link: "#" },
+                            { title: "The Silk Roads: A New History of the World", author: "Peter Frankopan", description: "Re-centers world history on the interconnectedness of the Silk Roads.", link: "#" },
+                            { title: "The Man Who Mistook His Wife for a Hat", author: "Oliver Sacks", description: "Collection of neurological case studies illuminating brain mysteries.", link: "#" },
+                            { title: "The Anarchy: The East India Company", author: "William Dalrymple", description: "Focuses on the rise of the East India Company and its devastating impact on India.", link: "#" },
+                            { title: "A History of India, Vol. 1", author: "Romila Thapar", description: "Covers Indian history from its origins up to the arrival of the Mughals.", link: "#" },
+                            { title: "The Productive Muslim", author: "Mohammed Faris", description: "Combines Islamic principles with modern productivity/self-development.", link: "#" },
+                            { title: "Secrets of Divine Love", author: "A. Helwa", description: "Focuses on spiritual connection to Allah, love, and inner peace.", link: "#" },
+                            { title: "Muhammad: His Life Based on the Earliest Sources", author: "Martin Lings", description: "Acclaimed biography of Prophet Muhammad (PBUH).", link: "#" },
+                        ],
+                        montessoriResources: [
+                            { title: "Object Permanence Box (DIY)", description: "Teaches objects exist even when out of sight.", link: "#" },
+                            { title: "Culver City Julian Dixon Library", description: "Offers 'Circle Time' for ages 0-2 and 'New Parent Engagement' sessions.", link: "#" },
+                            { title: "The People Place (Culver City)", description: "Offers 'Infant Class' (0-9 months) for parenting support.", link: "#" },
+                            { title: "Toy Loan Program (LA County)", description: "Allows borrowing toys like a library for creativity and responsibility.", link: "#" },
+                        ],
+                        workoutTips: [
+                            { title: "Pelvic Floor Exercises", description: "Focus on gentle, home-based routines suitable for small spaces.", link: "#" },
+                            { title: "Home-based Weight/Yoga Routines", description: "Look for videos and guides adaptable to a 2-bedroom apartment.", link: "#" },
+                        ],
+                        nannySearch: [
+                            { title: "Nanny Search Guidance", description: "Tips for finding part-time nannies in Culver City (agencies, online platforms, interview questions).", link: "#" },
+                            { title: "Connections For Children (Culver City)", description: "Provides child care referrals to licensed child care homes and centers.", link: "#" },
+                        ],
+                        skinTreatments: [
+                            { title: "Dermatologist Appointment", description: "Research reputable providers in Culver City and prepare questions about costs and procedures.", link: "#" },
+                            { title: "Hydrafacial Research", description: "Investigate local spas offering hydrafacials and average costs.", link: "#" },
+                        ],
+                        languageLearning: [
+                            { title: "Hindi/Urdu Learning Apps", description: "Explore apps like Duolingo (if suitable for spoken-only focus) or specialized apps for basic spoken/listening.", link: "#" },
+                            { title: "Immersion via Media", description: "Listen to Hindi/Urdu music or simple children's stories/dialogues.", link: "#" },
+                        ],
+                        housekeepingEfficiency: [
+                            { title: "Cleaning Checklists", description: "Create daily/weekly checklists for bathrooms, sheets, laundry, dishes.", link: "#" },
+                            { title: "Frequency Guides", description: "Establish realistic frequencies for tasks (e.g., dishes daily, sheets weekly/biweekly).", link: "#" },
+                        ],
+                        mealPrepGrocery: [
+                            { title: "Easy Family-Friendly Recipes", description: "Compile a list of quick, go-to recipes for busy days.", link: "#" },
+                            { title: "Grocery Delivery Services/Strategies", description: "Research local delivery options (e.g., Instacart, Amazon Fresh) or efficient in-store shopping strategies.", link: "#" },
+                            { title: "Uber Eats/Postmates Deals", description: "Set reminders to check for deals and strategize maximizing savings.", link: "#" },
+                        ],
+                        babyActivitiesLocal: [
+                            { title: "Culver City Library Story Times", description: "Check library schedules for baby-friendly story time sessions.", link: "#" },
+                            { title: "Local Music Groups for Babies", description: "Search for parent-and-me music classes in Culver City.", link: "#" },
+                            { title: "Parks for Walks in Culver City", description: "Identify parks suitable for stroller walks and outdoor time.", link: "#" },
+                        ]
+                    },
+                    lastUpdated: new Date().toISOString()
+                };
+                await window.updateUserDataInFirestore(finalUserData);
+                showModal("Setup Complete!", "Your Parental Productivity Partner is ready!", () => {
+                    window.location.reload(); // Refresh to Dashboard
+                });
+            }
+        }
+
+        function handleOnboardingBack() {
+            if (onboardingStep > 0) {
+                onboardingStep--;
+                renderOnboardingStep();
+            }
+        }
+
+        function parseGoalsAndHabits() {
+            const parsedMajorGoals = majorGoalsInput.split(';')
+                .map(goal => goal.trim())
+                .filter(goal => goal)
+                .map((goal, index) => ({
+                    id: `majorGoal-${Date.now()}-${index}`,
+                    name: goal,
+                    subTasks: [`Define specific steps for "${goal}"`],
+                    progress: 0,
+                    status: 'pending'
+                }));
+
+            const parsedOpenActionItems = openActionItemsInput.split(';')
+                .map(item => item.trim())
+                .filter(item => item)
+                .map((item, index) => ({
+                    id: `actionItem-${Date.now()}-${index}`,
+                    name: item,
+                    completed: false,
+                    status: 'pending'
+                }));
+
+            const parsedDailyWeeklyHabits = dailyWeeklyHabitsInput.split(';')
+                .map(habit => habit.trim())
+                .filter(habit => habit)
+                .map((habit, index) => {
+                    const parts = habit.match(/(.*)\((.*)\)/);
+                    let name = habit;
+                    let frequency = 'Daily';
+                    if (parts && parts.length === 3) {
+                        name = parts[1].trim();
+                        frequency = parts[2].trim();
+                    }
+                    return {
+                        id: `habit-${Date.now()}-${index}`,
+                        name,
+                        frequency,
+                        tracking: {}
+                    };
+                });
+            return { parsedMajorGoals, parsedOpenActionItems, parsedDailyWeeklyHabits };
+        }
+
+
+        // --- Dashboard Component (HTML String) ---
+        function Dashboard() {
+            const today = new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            return `
+                <div class="container">
+                    <h1 class="text-3xl font-bold text-center text-blue-700 mb-6">Parental Productivity Dashboard</h1>
+                    <div class="mb-4 text-center text-sm text-gray-500">
+                        Your User ID: <span class="font-mono bg-gray-100 p-1 rounded-md text-gray-700">${window.userId}</span>
+                    </div>
+
+                    <div class="flex justify-center mb-6 border-b border-gray-200">
+                        ${['Today', 'Goals', 'Habits', 'Routine', 'Resources', 'Calendar', 'Reviews', 'AI Assistant'].map(tab => `
+                            <button class="tab-button px-6 py-3 text-lg font-medium rounded-t-lg transition-colors duration-200 ${tab === 'Today' ? 'active text-blue-700 border-b-2 border-blue-700' : 'text-gray-600 hover:text-blue-500'}" data-tab="${tab.toLowerCase().replace(' ', '-')}" >
+                                ${tab}
+                            </button>
+                        `).join('')}
+                    </div>
+
+                    <div id="tab-content" class="p-4 bg-gray-50 rounded-lg shadow-inner">
+                        <!-- Content will be rendered here by JS -->
+                    </div>
+                     <div id="app-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center p-4 z-50 hidden">
+                        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-auto">
+                            <h3 id="modal-title" class="text-xl font-semibold text-gray-900 mb-4"></h3>
+                            <p id="modal-message" class="text-gray-700 mb-6"></p>
+                            <div class="flex justify-end space-x-3">
+                                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition duration-150 ease-in-out hidden"></button>
+                                <button id="modal-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out"></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let currentDashboardTab = 'Today';
+        let currentCalendarDate = new Date();
+
+        function initDashboardListeners() {
+            // Tab switching
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active', 'text-blue-700', 'border-b-2', 'border-blue-700'));
+                    e.target.classList.add('active', 'text-blue-700', 'border-b-2', 'border-blue-700');
+                    currentDashboardTab = e.target.dataset.tab.replace('-', ' ');
+                    renderDashboardTabContent();
+                });
+            });
+            renderDashboardTabContent(); // Initial render
+        }
+
+        function renderDashboardTabContent() {
+            const tabContentDiv = document.getElementById('tab-content');
+            if (!tabContentDiv) return;
+
+            let html = '';
+            const userData = window.userData; // Use global userData
+
+            if (!userData) {
+                tabContentDiv.innerHTML = '<p class="text-gray-600">No user data found. Please complete the onboarding first.</p>';
+                return;
+            }
+
+            const todayISO = new Date().toISOString().split('T')[0];
+
+            switch (currentDashboardTab) {
+                case 'today':
+                    const todayHabits = userData.dailyWeeklyHabits?.filter(habit =>
+                        habit.frequency === 'Daily' || habit.frequency.toLowerCase().includes(new Date().toLocaleString('en-US', { weekday: 'long' }).toLowerCase())
+                    ) || [];
+                    const top3Tasks = (userData.openActionItems || [])
+                        .filter(item => !item.completed)
+                        .slice(0, 3);
+
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Today's Focus: ${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</h2>
+
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-600 mb-3">⭐ Today's Top 3 Action Items</h3>
+                                ${top3Tasks.length > 0 ? `
+                                    <ul class="space-y-2">
+                                        ${top3Tasks.map(item => `
+                                            <li class="flex items-center">
+                                                <input type="checkbox" data-item-id="${item.id}" class="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500 mr-3" ${item.completed ? 'checked' : ''} />
+                                                <span class="text-lg ${item.completed ? 'line-through text-gray-500' : 'text-gray-800'}">${item.name}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                ` : `<p class="text-gray-600">No top 3 action items identified. Add some in the 'Goals' tab or ask the AI Assistant!</p>`}
+                            </div>
+
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-600 mb-3">✅ Daily Habits</h3>
+                                ${todayHabits.length > 0 ? `
+                                    <ul class="space-y-2">
+                                        ${todayHabits.map(habit => `
+                                            <li class="flex items-center">
+                                                <input type="checkbox" data-habit-id="${habit.id}" class="form-checkbox green h-5 w-5 text-green-600 rounded focus:ring-green-500 mr-3" ${habit.tracking[todayISO] ? 'checked' : ''} />
+                                                <span class="text-lg ${habit.tracking[todayISO] ? 'line-through text-gray-500' : 'text-gray-800'}">${habit.name}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                ` : `<p class="text-gray-600">No daily habits set up. Define them in the 'Habits' tab!</p>`}
+                            </div>
+                        </div>
+                    `;
+                    break;
+                case 'goals':
+                    const getProgressPercentage = (goal) => {
+                        if (!goal.subTasks || goal.subTasks.length === 0) return 0;
+                        const completedSubTasks = goal.subTasks.filter(task => task.completed).length;
+                        return (completedSubTasks / goal.subTasks.length) * 100;
+                    };
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Major Goals</h2>
+                            ${userData.majorGoals && userData.majorGoals.length > 0 ? `
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    ${userData.majorGoals.map(goal => `
+                                        <div class="bg-white p-5 rounded-lg shadow-md">
+                                            <h3 class="text-xl font-semibold text-blue-600 mb-2">${goal.name}</h3>
+                                            <div class="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                                                <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${getProgressPercentage(goal)}%;"></div>
+                                            </div>
+                                            <p class="text-sm text-gray-600 mb-3">${Math.round(getProgressPercentage(goal))}% Complete</p>
+                                            <ul class="list-disc list-inside space-y-1 text-gray-700">
+                                                ${goal.subTasks?.map((sub, index) => `
+                                                    <li class="flex items-center">
+                                                        <input type="checkbox" data-goal-id="${goal.id}" data-subtask-index="${index}" class="form-checkbox purple h-4 w-4 text-purple-600 rounded focus:ring-purple-500 mr-2" ${sub.completed ? 'checked' : ''} />
+                                                        <span class="${sub.completed ? 'line-through text-gray-500' : ''}">${sub.name}</span>
+                                                    </li>
+                                                `).join('')}
+                                            </ul>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `<p class="text-gray-600">No major goals defined. Go to Onboarding or edit your profile to add some!</p>`}
+
+                            <h2 class="text-2xl font-semibold text-gray-900 mt-8">Open Action Items</h2>
+                            ${userData.openActionItems && userData.openActionItems.length > 0 ? `
+                                <div class="bg-white p-5 rounded-lg shadow-md">
+                                    <ul class="space-y-2">
+                                        ${userData.openActionItems.map(item => `
+                                            <li class="flex items-center">
+                                                <input type="checkbox" data-item-id="${item.id}" class="form-checkbox h-5 w-5 text-blue-600 rounded focus:ring-blue-500 mr-3" ${item.completed ? 'checked' : ''} />
+                                                <span class="text-lg ${item.completed ? 'line-through text-gray-500' : 'text-gray-800'}">${item.name}</span>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            ` : `<p class="text-gray-600">No action items defined. Add some in Onboarding or edit your profile.</p>`}
+                        </div>
+                    `;
+                    break;
+                case 'habits':
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Your Habits</h2>
+                            ${userData.dailyWeeklyHabits && userData.dailyWeeklyHabits.length > 0 ? `
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    ${userData.dailyWeeklyHabits.map(habit => `
+                                        <div class="bg-white p-5 rounded-lg shadow-md">
+                                            <h3 class="text-xl font-semibold text-green-600 mb-2">${habit.name}</h3>
+                                            <p class="text-gray-600 mb-3">Frequency: ${habit.frequency}</p>
+                                            <button data-habit-id="${habit.id}" class="px-4 py-2 rounded-md transition-colors duration-200 ${
+                                                habit.tracking[todayISO]
+                                                    ? 'bg-green-500 text-white hover:bg-green-600'
+                                                    : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                                            }">
+                                                ${habit.tracking[todayISO] ? 'Mark as Incomplete Today' : 'Mark as Complete Today'}
+                                            </button>
+                                            <p class="text-sm text-gray-500 mt-2">
+                                                Last tracked: ${Object.keys(habit.tracking).filter(date => habit.tracking[date]).sort().pop() || 'Never'}
+                                            </p>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : `<p class="text-gray-600">No habits defined. Add some in Onboarding or edit your profile.</p>`}
+                        </div>
+                    `;
+                    break;
+                case 'routine':
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Your Daily Rhythm</h2>
+                            <p class="text-gray-700">This routine integrates your baby's schedule with your personal goals, embracing "flexibility vs. rigidity" for a Montessori "rhythm."</p>
+                            ${userData.dailyRoutine && userData.dailyRoutine.length > 0 ? `
+                                <div class="bg-white p-5 rounded-lg shadow-md">
+                                    <ul class="space-y-3">
+                                        ${userData.dailyRoutine.map((item, index) => `
+                                            <li class="flex items-center text-lg">
+                                                <span class="font-semibold text-blue-700 w-24 flex-shrink-0">${item.time}</span>
+                                                <span class="ml-4 ${item.type === 'baby' ? 'text-purple-700' : item.type === 'personal' ? 'text-green-700' : 'text-gray-800'}">
+                                                    ${item.activity}
+                                                </span>
+                                                ${item.type === 'baby' ? '<span class="ml-2 text-sm text-purple-500">(Baby Focus)</span>' : ''}
+                                                ${item.type === 'personal' ? '<span class="ml-2 text-sm text-green-500">(Personal Focus)</span>' : ''}
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                </div>
+                            ` : `<p class="text-gray-600">No daily routine generated yet. Complete the onboarding to see your suggested rhythm!</p>`}
+                            <p class="text-sm text-gray-500 mt-4">
+                                *Note: This is a sample routine. In a full app, AI would adapt it based on your actual baby's schedule and your goal priorities.
+                            </p>
+                        </div>
+                    `;
+                    break;
+                case 'resources':
+                    const renderResourcesSection = (title, key) => {
+                        const resources = userData.resources?.[key] || [];
+                        return `
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-600 mb-3">📚 ${title}</h3>
+                                ${resources.length > 0 ? `
+                                    <ul class="space-y-3">
+                                        ${resources.map((res, index) => `
+                                            <li class="border-b border-gray-100 pb-2 last:border-b-0">
+                                                <a href="${res.link}" target="_blank" rel="noopener noreferrer" class="text-lg font-medium text-blue-700 hover:underline">${res.title}</a>
+                                                <p class="text-gray-700">${res.author ? `by ${res.author}` : ''}</p>
+                                                <p class="text-sm text-gray-500">${res.description}</p>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                ` : `<p class="text-gray-600">No ${title.toLowerCase().replace(/s$/, '')} recommendations yet.</p>`}
+                            </div>
+                        `;
+                    };
+
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Personalized Resources</h2>
+                            <p class="text-gray-700">Here are curated recommendations based on your profile and goals:</p>
+                            ${renderResourcesSection("Book Recommendations", "bookRecommendations")}
+                            ${renderResourcesSection("Montessori & Baby Activities", "montessoriResources")}
+                            ${renderResourcesSection("Workout & Well-being Tips", "workoutTips")}
+                            ${renderResourcesSection("Nanny Search Guidance", "nannySearch")}
+                            ${renderResourcesSection("Skin Treatments", "skinTreatments")}
+                            ${renderResourcesSection("Language Learning", "languageLearning")}
+                            ${renderResourcesSection("Housekeeping Efficiency", "housekeepingEfficiency")}
+                            ${renderResourcesSection("Meal Prep & Grocery", "mealPrepGrocery")}
+                            ${renderResourcesSection("Local Baby Activities", "babyActivitiesLocal")}
+                        </div>
+                    `;
+                    break;
+                case 'calendar':
+                    const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+                    const getCalendarDays = (date) => {
+                        const year = date.getFullYear();
+                        const month = date.getMonth();
+                        const firstDayOfMonth = new Date(year, month, 1).getDay();
+                        const daysInMonth = getDaysInMonth(year, month);
+                        const days = [];
+                        for (let i = 0; i < firstDayOfMonth; i++) days.push(null);
+                        for (let i = 1; i <= daysInMonth; i++) days.push(new Date(year, month, i));
+                        return days;
+                    };
+                    const calendarDays = getCalendarDays(currentCalendarDate);
+                    const currentMonthYear = currentCalendarDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Monthly Calendar Overview</h2>
+                            <div class="flex justify-between items-center mb-4">
+                                <button id="calendar-prev-month" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">&lt; Prev</button>
+                                <span class="text-xl font-semibold">${currentMonthYear}</span>
+                                <button id="calendar-next-month" class="px-3 py-1 bg-gray-200 rounded-md hover:bg-gray-300">Next &gt;</button>
+                            </div>
+                            <div class="grid grid-cols-7 gap-2 text-center text-sm font-medium text-gray-700">
+                                ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => `<div class="py-2 bg-blue-100 rounded-md">${day}</div>`).join('')}
+                            </div>
+                            <div class="grid grid-cols-7 gap-2 text-center">
+                                ${calendarDays.map((day, index) => `
+                                    <div class="p-2 rounded-md border border-gray-200 ${day ? 'bg-white text-gray-900' : 'bg-gray-50 text-gray-400'} ${day && day.toISOString().split('T')[0] === todayISO ? 'bg-blue-200 font-bold border-blue-500' : ''}">
+                                        ${day ? day.getDate() : ''}
+                                        ${day && Math.random() > 0.7 ? '<div class="mt-1 text-xs text-blue-700"><span class="block w-2 h-2 bg-orange-400 rounded-full mx-auto mt-1" title="Task"></span></div>' : ''}
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <p class="text-sm text-gray-500 mt-4">
+                                *Note: This is a basic calendar view. Event integration would be a future enhancement.
+                            </p>
+                        </div>
+                    `;
+                    break;
+                case 'reviews':
+                    html = `
+                        <div class="space-y-6">
+                            <h2 class="text-2xl font-semibold text-gray-900">Weekly & Monthly Reviews</h2>
+                            <p class="text-gray-700">This section would provide summaries of your progress, identify challenges, and allow for adjustments. (Under development)</p>
+
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-600 mb-3">Weekly Progress Summary</h3>
+                                <p class="text-gray-600">Tracked habits this week: XX / YY</p>
+                                <p class="text-gray-600">Action items completed this week: ZZ</p>
+                                <p class="text-gray-600">Goals progress updated: (List relevant goals)</p>
+                                <button class="mt-3 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">Generate Weekly Review</button>
+                            </div>
+
+                            <div class="bg-white p-5 rounded-lg shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-600 mb-3">Challenges & Adjustments</h3>
+                                <textarea
+                                    class="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2 h-32"
+                                    placeholder="Reflect on challenges and propose adjustments to your plan..."
+                                ></textarea>
+                                <button class="mt-3 px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600">Save Adjustments</button>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                case 'ai-assistant':
+                    html = `
+                        <div class="flex flex-col h-[70vh] bg-white rounded-lg shadow-md p-4">
+                            <h2 class="text-2xl font-semibold text-gray-900 mb-4">AI Assistant</h2>
+                            <div id="chat-history" class="flex-1 overflow-y-auto border rounded-lg p-3 bg-gray-50 mb-4 space-y-3">
+                                <p class="text-gray-500 text-center mt-8">Type your request below to get started! <br/> (e.g., "Add 'Research baby-friendly cafes' to my open action items.")</p>
+                            </div>
+                            <div class="flex items-center">
+                                <input type="text" id="user-message-input" class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-500 focus:ring-opacity-50 p-2 mr-2" placeholder="Type your message..." />
+                                <button id="send-message-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200">Send</button>
+                            </div>
+                        </div>
+                    `;
+                    break;
+            }
+            tabContentDiv.innerHTML = html;
+            attachDashboardEventListeners(); // Re-attach listeners for new content
+        }
+
+        function attachDashboardEventListeners() {
+            const todayISO = new Date().toISOString().split('T')[0];
+
+            if (currentDashboardTab === 'today' || currentDashboardTab === 'goals') {
+                document.querySelectorAll('#tab-content input[type="checkbox"][data-item-id]').forEach(checkbox => {
+                    checkbox.onchange = async (e) => {
+                        const itemId = e.target.dataset.itemId;
+                        const updatedActionItems = window.userData.openActionItems.map(item =>
+                            item.id === itemId ? { ...item, completed: e.target.checked } : item
+                        );
+                        await window.updateUserDataInFirestore({ ...window.userData, openActionItems: updatedActionItems });
+                        renderDashboardTabContent(); // Re-render to update strike-through
+                    };
+                });
+            }
+
+            if (currentDashboardTab === 'today' || currentDashboardTab === 'habits') {
+                 document.querySelectorAll('#tab-content input[type="checkbox"][data-habit-id]').forEach(checkbox => {
+                    checkbox.onchange = async (e) => {
+                        const habitId = e.target.dataset.habitId;
+                        const updatedHabits = window.userData.dailyWeeklyHabits.map(habit => {
+                            if (habit.id === habitId) {
+                                const newTracking = { ...habit.tracking };
+                                newTracking[todayISO] = e.target.checked;
+                                return { ...habit, tracking: newTracking };
+                            }
+                            return habit;
+                        });
+                        await window.updateUserDataInFirestore({ ...window.userData, dailyWeeklyHabits: updatedHabits });
+                        renderDashboardTabContent(); // Re-render to update button text
+                    };
+                });
+                document.querySelectorAll('#tab-content button[data-habit-id]').forEach(button => {
+                    button.onclick = async (e) => {
+                        const habitId = e.target.dataset.habitId;
+                         const updatedHabits = window.userData.dailyWeeklyHabits.map(habit => {
+                            if (habit.id === habitId) {
+                                const newTracking = { ...habit.tracking };
+                                newTracking[todayISO] = !newTracking[todayISO]; // Toggle
+                                return { ...habit, tracking: newTracking };
+                            }
+                            return habit;
+                        });
+                        await window.updateUserDataInFirestore({ ...window.userData, dailyWeeklyHabits: updatedHabits });
+                        renderDashboardTabContent(); // Re-render to update button text
+                    };
+                });
+            }
+
+            if (currentDashboardTab === 'goals') {
+                document.querySelectorAll('#tab-content input[type="checkbox"][data-goal-id][data-subtask-index]').forEach(checkbox => {
+                    checkbox.onchange = async (e) => {
+                        const goalId = e.target.dataset.goalId;
+                        const subtaskIndex = parseInt(e.target.dataset.subtaskIndex);
+                        const updatedGoals = window.userData.majorGoals.map(g => {
+                            if (g.id === goalId) {
+                                const newSubTasks = g.subTasks.map((s, idx) =>
+                                    idx === subtaskIndex ? { ...s, completed: e.target.checked } : s
+                                );
+                                const completedCount = newSubTasks.filter(task => task.completed).length;
+                                const newProgress = (completedCount / newSubTasks.length) * 100;
+                                return { ...g, subTasks: newSubTasks, progress: newProgress };
+                            }
+                            return g;
+                        });
+                        await window.updateUserDataInFirestore({ ...window.userData, majorGoals: updatedGoals });
+                        renderDashboardTabContent();
+                    };
+                });
+            }
+
+            if (currentDashboardTab === 'calendar') {
+                document.getElementById('calendar-prev-month')?.addEventListener('click', () => {
+                    currentCalendarDate = new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() - 1, 1);
+                    renderDashboardTabContent();
+                });
+                document.getElementById('calendar-next-month')?.addEventListener('click', () => {
+                    currentCalendarDate = new Date(currentCalendarDate.getFullYear(), currentCalendarDate.getMonth() + 1, 1);
+                    renderDashboardTabContent();
+                });
+            }
+
+            if (currentDashboardTab === 'ai-assistant') {
+                const sendButton = document.getElementById('send-message-btn');
+                const userInput = document.getElementById('user-message-input');
+                const chatHistoryDiv = document.getElementById('chat-history');
+
+                const chatMessages = []; // Local chat history for AI Assistant tab
+                const renderChatMessages = () => {
+                    chatHistoryDiv.innerHTML = ''; // Clear previous messages
+                    if (chatMessages.length === 0) {
+                        chatHistoryDiv.innerHTML = `<p class="text-gray-500 text-center mt-8">Type your request below to get started! <br/> (e.g., "Add 'Research baby-friendly cafes' to my open action items.")</p>`;
+                    } else {
+                        chatMessages.forEach(msg => {
+                            const msgDiv = document.createElement('div');
+                            msgDiv.className = `flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`;
+                            msgDiv.innerHTML = `<div class="chat-message ${msg.sender}">${msg.message}</div>`;
+                            chatHistoryDiv.appendChild(msgDiv);
+                        });
+                        chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight; // Scroll to bottom
+                    }
+                };
+                renderChatMessages();
+
+                const callGeminiApi = async (promptText, currentData) => {
+                    let chatPayload = [];
+                    const contextData = {
+                        profile: currentData.profile,
+                        majorGoals: currentData.majorGoals,
+                        openActionItems: currentData.openActionItems,
+                        dailyWeeklyHabits: currentData.dailyWeeklyHabits,
+                    };
+
+                    const instructionPrompt = `You are a parental productivity assistant. The user wants to update their goals or address a problem within their productivity app.
+                    Current User Data (for context, do not display this to user): ${JSON.stringify(contextData)}
+
+                    Based on the user's request, provide a JSON object with an 'action' and relevant 'data'.
+                    If the request is not understood or cannot be fulfilled, provide an 'error' message within the 'data' and a display message.
+
+                    Possible actions and their required 'data' structure:
+
+                    1.  'addOpenActionItem': Add a new open action item.
+                        Data: {"item": "The new action item text"}
+
+                    2.  'completeOpenActionItem': Mark an existing open action item as complete.
+                        Data: {"itemKeywords": ["keywords", "to", "identify", "item"]}
+
+                    3.  'addGoalSubtask': Add a subtask to an existing major goal.
+                        Data: {"goalKeywords": ["keywords", "to", "identify", "goal"], "subtask": "new subtask text"}
+
+                    4.  'updateGoalSubtaskStatus': Update the completion status of a subtask within a major goal.
+                        Data: {"goalKeywords": ["keywords", "to", "identify", "goal"], "subtaskKeywords": ["keywords", "to", "identify", "subtask"], "completed": true/false}
+
+                    5.  'suggestProblemSolution': Provide a natural language solution or advice for a stated problem (no data update needed for this action, just text).
+                        Data: {"problemKeywords": ["keywords", "to", "identify", "problem"], "solution": "AI's suggested solution text"}
+
+                    Always include a 'displayMessage' in the top level of the JSON response, which is a friendly message for the user summarizing what was done or what the AI suggests.
+
+                    User query: "${promptText}"
+
+                    Respond ONLY with a JSON object according to the schema provided.`;
+
+                    chatPayload.push({ role: "user", parts: [{ text: instructionPrompt }] });
+
+                    const payload = {
+                        contents: chatPayload,
+                        generationConfig: {
+                            responseMimeType: "application/json",
+                            responseSchema: {
+                                type: "OBJECT",
+                                properties: {
+                                    displayMessage: { "type": "STRING" },
+                                    action: {
+                                        "type": "STRING",
+                                        "enum": ["addOpenActionItem", "completeOpenActionItem", "addGoalSubtask", "updateGoalSubtaskStatus", "suggestProblemSolution"]
+                                    },
+                                    actionData: {
+                                        "type": "OBJECT",
+                                        "properties": {
+                                            "item": { "type": "STRING" },
+                                            "itemKeywords": { "type": "ARRAY", "items": { "type": "STRING" } },
+                                            "goalKeywords": { "type": "ARRAY", "items": { "type": "STRING" } },
+                                            "subtaskKeywords": { "type": "ARRAY", "items": { "type": "STRING" } },
+                                            "newText": { "type": "STRING" },
+                                            "completed": { "type": "BOOLEAN" },
+                                            "subtask": { "type": "STRING" },
+                                            "solution": { "type": "STRING" },
+                                            "error": { "type": "STRING" }
+                                        }
+                                    }
+                                },
+                                "required": ["displayMessage", "action"]
+                            }
+                        }
+                    };
+
+                    const apiKey = ""; // Canvas will provide this automatically
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+
+                    try {
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const result = await response.json();
+                        console.log("Gemini API Raw Response:", result);
+
+                        if (result.candidates && result.candidates.length > 0 &&
+                            result.candidates[0].content && result.candidates[0].content.parts &&
+                            result.candidates[0].content.parts.length > 0) {
+                            const jsonText = result.candidates[0].content.parts[0].text;
+                            try {
+                                const parsedJson = JSON.parse(jsonText);
+                                return parsedJson;
+                            } catch (parseError) {
+                                console.error("Failed to parse AI response JSON:", parseError, "Raw text:", jsonText);
+                                return {
+                                    displayMessage: "I received a response, but couldn't understand it. Could you rephrase?",
+                                    action: "none",
+                                    actionData: { error: "Parse Error" }
+                                };
+                            }
+                        } else {
+                            console.error("Unexpected AI response structure:", result);
+                            return {
+                                displayMessage: "I'm having trouble generating a response. Please try again.",
+                                action: "none",
+                                actionData: { error: "Unexpected Response" }
+                            };
+                        }
+                    } catch (fetchError) {
+                        console.error("Fetch error during Gemini API call:", fetchError);
+                        return {
+                            displayMessage: `Network error or API issue: ${fetchError.message}. Please check your connection or try again later.`,
+                            action: "none",
+                            actionData: { error: fetchError.message }
+                        };
+                    }
+                };
+
+                const findItemByKeywords = (items, keywords) => {
+                    const lowerKeywords = keywords.map(k => k.toLowerCase());
+                    return items.find(item =>
+                        lowerKeywords.every(k => (item.name || '').toLowerCase().includes(k))
+                    );
+                };
+
+                const processAIAction = async (actionResponse) => {
+                    let newUserData = JSON.parse(JSON.stringify(window.userData)); // Deep copy
+                    let madeChanges = false;
+                    const action = actionResponse.action;
+                    const data = actionResponse.actionData;
+
+                    switch (action) {
+                        case 'addOpenActionItem':
+                            if (data.item) {
+                                newUserData.openActionItems = [
+                                    ...(newUserData.openActionItems || []),
+                                    { id: `actionItem-${Date.now()}`, name: data.item, completed: false, status: 'pending' }
+                                ];
+                                madeChanges = true;
+                            }
+                            break;
+                        case 'completeOpenActionItem':
+                            if (data.itemKeywords && newUserData.openActionItems) {
+                                const itemToUpdate = findItemByKeywords(newUserData.openActionItems, data.itemKeywords);
+                                if (itemToUpdate) {
+                                    newUserData.openActionItems = newUserData.openActionItems.map(item =>
+                                        item.id === itemToUpdate.id ? { ...item, completed: true } : item
+                                    );
+                                    madeChanges = true;
+                                } else {
+                                     chatMessages.push({ sender: 'ai', message: `I couldn't find an action item matching "${data.itemKeywords.join(' ')}".` });
+                                }
+                            }
+                            break;
+                        case 'addGoalSubtask':
+                            if (data.goalKeywords && data.subtask && newUserData.majorGoals) {
+                                const goalToUpdate = findItemByKeywords(newUserData.majorGoals, data.goalKeywords);
+                                if (goalToUpdate) {
+                                    goalToUpdate.subTasks = [...(goalToUpdate.subTasks || []), { name: data.subtask, completed: false }];
+                                    const completedSubTasks = goalToUpdate.subTasks.filter(task => task.completed).length;
+                                    goalToUpdate.progress = (completedSubTasks / goalToUpdate.subTasks.length) * 100;
+
+                                    newUserData.majorGoals = newUserData.majorGoals.map(goal =>
+                                        goal.id === goalToUpdate.id ? goalToUpdate : goal
+                                    );
+                                    madeChanges = true;
+                                } else {
+                                     chatMessages.push({ sender: 'ai', message: `I couldn't find a goal matching "${data.goalKeywords.join(' ')}".` });
+                                }
+                            }
+                            break;
+                        case 'updateGoalSubtaskStatus':
+                            if (data.goalKeywords && data.subtaskKeywords && typeof data.completed === 'boolean' && newUserData.majorGoals) {
+                                const goalToUpdate = findItemByKeywords(newUserData.majorGoals, data.goalKeywords);
+                                if (goalToUpdate) {
+                                    const subtaskToUpdate = findItemByKeywords(goalToUpdate.subTasks, data.subtaskKeywords);
+                                    if (subtaskToUpdate) {
+                                        goalToUpdate.subTasks = goalToUpdate.subTasks.map(sub =>
+                                            sub.name === subtaskToUpdate.name ? { ...sub, completed: data.completed } : sub
+                                        );
+                                        const completedSubTasks = goalToUpdate.subTasks.filter(task => task.completed).length;
+                                        goalToUpdate.progress = (completedSubTasks / goalToUpdate.subTasks.length) * 100;
+
+                                        newUserData.majorGoals = newUserData.majorGoals.map(goal =>
+                                            goal.id === goalToUpdate.id ? goalToUpdate : goal
+                                        );
+                                        madeChanges = true;
+                                    } else {
+                                        chatMessages.push({ sender: 'ai', message: `I couldn't find the subtask "${data.subtaskKeywords.join(' ')}" in that goal.` });
+                                    }
+                                } else {
+                                    chatMessages.push({ sender: 'ai', message: `I couldn't find a goal matching "${data.goalKeywords.join(' ')}".` });
+                                }
+                            }
+                            break;
+                        case 'suggestProblemSolution':
+                            // Solution is already in displayMessage, no data update needed in Firestore
+                            break;
+                        default:
+                            console.warn("Unknown AI action:", action);
+                            chatMessages.push({ sender: 'ai', message: "I understood your request, but I'm not sure how to process that action type." });
+                            break;
+                    }
+
+                    if (madeChanges) {
+                        await window.updateUserDataInFirestore(newUserData);
+                        renderDashboardTabContent(); // Re-render affected tabs
+                    }
+                };
+
+                const handleSendMessage = async () => {
+                    const message = userInput.value.trim();
+                    if (!message) return;
+
+                    chatMessages.push({ sender: 'user', message: message });
+                    renderChatMessages();
+                    userInput.value = '';
+                    userInput.disabled = true;
+                    sendButton.disabled = true;
+                    sendButton.textContent = 'Sending...';
+
+                    try {
+                        const aiResponse = await callGeminiApi(message, window.userData);
+                        chatMessages.push({ sender: 'ai', message: aiResponse.displayMessage });
+
+                        if (aiResponse.actionData && aiResponse.action !== "suggestProblemSolution") {
+                            await processAIAction(aiResponse);
+                        }
+                    } catch (error) {
+                        console.error("Error with AI assistant:", error);
+                        chatMessages.push({ sender: 'ai', message: `Oops! Something went wrong with the AI: ${error.message}.` });
+                    } finally {
+                        renderChatMessages();
+                        userInput.disabled = false;
+                        sendButton.disabled = false;
+                        sendButton.textContent = 'Send';
+                        userInput.focus();
+                    }
+                };
+
+                sendButton.onclick = handleSendMessage;
+                userInput.onkeypress = (e) => {
+                    if (e.key === 'Enter') {
+                        handleSendMessage();
+                    }
+                };
+            }
+        }
+    </script>
+</head>
+<body class="font-inter">
+    <div id="app-root" class="w-full">
+        <!-- App will be rendered here by JavaScript -->
+    </div>
+
+    <!-- Modal HTML Structure -->
+    <div id="app-modal" class="fixed inset-0 bg-gray-600 bg-opacity-75 flex justify-center items-center p-4 z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full mx-auto">
+            <h3 id="modal-title" class="text-xl font-semibold text-gray-900 mb-4"></h3>
+            <p id="modal-message" class="text-gray-700 mb-6"></p>
+            <div class="flex justify-end space-x-3">
+                <button id="modal-cancel-btn" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition duration-150 ease-in-out hidden"></button>
+                <button id="modal-confirm-btn" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 transition duration-150 ease-in-out"></button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
