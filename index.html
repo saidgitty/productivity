@@ -191,22 +191,37 @@
             // Use window properties directly for __app_id and __firebase_config
             // This provides fallbacks for deployments outside of the Canvas environment
             const currentAppId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'parental-productivity-default';
-            const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {
-                // YOUR PROVIDED FIREBASE CONFIGURATION
-                apiKey: "AIzaSyD2CEqxNwXCia44M5PZfFNoJcv46f0EaEI",
-                authDomain: "productivity-planning-db833.firebaseapp.com",
-                projectId: "productivity-planning-db833",
-                storageBucket: "productivity-planning-db833.firebasestorage.app",
-                messagingSenderId: "579472444851",
-                appId: "1:579472444851:web:2d0576d2192287d3e1cfc6"
-            };
+            
+            let firebaseConfig = null;
+            // First, try to get config from Canvas environment
+            if (typeof window.__firebase_config !== 'undefined') {
+                try {
+                    firebaseConfig = JSON.parse(window.__firebase_config);
+                } catch (e) {
+                    console.error("Error parsing __firebase_config from Canvas environment:", e);
+                    // If parsing fails, fall through to use the hardcoded config
+                }
+            }
 
-            if (firebaseConfig && firebaseConfig.projectId !== "YOUR_PROJECT_ID") { // Check if default placeholder is still there
+            // If Canvas config is not available or failed to parse, use the hardcoded (user-provided) config
+            if (!firebaseConfig || Object.keys(firebaseConfig).length === 0) { // Check if firebaseConfig is null, empty object, etc.
+                firebaseConfig = {
+                    apiKey: "AIzaSyD2CEqxNwXCia44M5PZfFNoJcv46f0EaEI",
+                    authDomain: "productivity-planning-db833.firebaseapp.com",
+                    projectId: "productivity-planning-db833",
+                    storageBucket: "productivity-planning-db833.firebasestorage.app",
+                    messagingSenderId: "579472444851",
+                    appId: "1:579472444851:web:2d0576d2192287d3e1cfc6"
+                };
+            }
+
+            // Now, initialize Firebase if firebaseConfig is valid and has essential keys
+            if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
                 try {
                     window.firebaseApp = initializeApp(firebaseConfig);
                     window.db = getFirestore(window.firebaseApp);
                     window.auth = getAuth(window.firebaseApp);
-                    window.appId = currentAppId;
+                    window.appId = currentAppId; // Use the derived appId
 
                     onAuthStateChanged(window.auth, async (user) => {
                         if (user) {
@@ -248,13 +263,13 @@
                     });
                 } catch (error) {
                     console.error("Failed to initialize Firebase:", error);
-                    showModal("Firebase Error", `Failed to initialize Firebase: ${error.message}`);
+                    showModal("Firebase Initialization Error", `Failed to initialize Firebase with provided configuration: ${error.message}. Please check your Firebase config for typos or missing values.`);
                     window.isDataLoaded = true;
                     renderApp();
                 }
             } else {
-                console.error("Firebase config not available or placeholder in the environment.");
-                showModal("Configuration Error", "Firebase configuration is missing or placeholder values are still present. Please replace 'YOUR_API_KEY', 'YOUR_AUTH_DOMAIN', 'YOUR_PROJECT_ID', etc., with your actual Firebase project credentials for external deployment.");
+                console.error("Firebase config is invalid or incomplete. Essential keys (apiKey, projectId) are missing.");
+                showModal("Configuration Error", "Firebase configuration is missing essential values (apiKey, projectId). Please ensure your Firebase config is correctly pasted and complete.");
                 window.isDataLoaded = true;
                 renderApp();
             }
@@ -589,7 +604,7 @@
                         ],
                         housekeepingEfficiency: [
                             { title: "Cleaning Checklists", description: "Create daily/weekly checklists for bathrooms, sheets, laundry, dishes.", link: "#" },
-                            { title: "Frequency Guides", description: "Establish realistic frequencies for tasks (e.g., dishes daily, sheets weekly/biweekly).", link: "#" },
+                            { title: "  Frequency Guides", description: "Establish realistic frequencies for tasks (e.g., dishes daily, sheets weekly/biweekly).", link: "#" },
                         ],
                         mealPrepGrocery: [
                             { title: "  Easy Family-Friendly Recipes", description: "Compile a list of quick, go-to recipes for busy days.", link: "#" },
