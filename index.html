@@ -192,14 +192,13 @@
             // This provides fallbacks for deployments outside of the Canvas environment
             const currentAppId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'parental-productivity-default';
             const firebaseConfig = typeof window.__firebase_config !== 'undefined' ? JSON.parse(window.__firebase_config) : {
-                // IMPORTANT: Replace with your actual Firebase project configuration for production deployments
-                // You can find this in your Firebase project settings -> Project settings -> General -> Your apps -> Firebase SDK snippet -> Config
-                apiKey: "YOUR_API_KEY",
-                authDomain: "YOUR_AUTH_DOMAIN",
-                projectId: "YOUR_PROJECT_ID",
-                storageBucket: "YOUR_STORAGE_BUCKET",
-                messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-                appId: "YOUR_APP_ID"
+                // YOUR PROVIDED FIREBASE CONFIGURATION
+                apiKey: "AIzaSyD2CEqxNwXCia44M5PZfFNoJcv46f0EaEI",
+                authDomain: "productivity-planning-db833.firebaseapp.com",
+                projectId: "productivity-planning-db833",
+                storageBucket: "productivity-planning-db833.firebasestorage.app",
+                messagingSenderId: "579472444851",
+                appId: "1:579472444851:web:2d0576d2192287d3e1cfc6"
             };
 
             if (firebaseConfig && firebaseConfig.projectId !== "YOUR_PROJECT_ID") { // Check if default placeholder is still there
@@ -593,7 +592,7 @@
                             { title: "Frequency Guides", description: "Establish realistic frequencies for tasks (e.g., dishes daily, sheets weekly/biweekly).", link: "#" },
                         ],
                         mealPrepGrocery: [
-                            { title: "Easy Family-Friendly Recipes", description: "Compile a list of quick, go-to recipes for busy days.", link: "#" },
+                            { title: "  Easy Family-Friendly Recipes", description: "Compile a list of quick, go-to recipes for busy days.", link: "#" },
                             { title: "Grocery Delivery Services/Strategies", description: "Research local delivery options (e.g., Instacart, Amazon Fresh) or efficient in-store shopping strategies.", link: "#" },
                             { title: "Uber Eats/Postmates Deals", description: "Set reminders to check for deals and strategize maximizing savings.", link: "#" },
                         ],
@@ -1365,4 +1364,3 @@
     </div>
 </body>
 </html>
-
